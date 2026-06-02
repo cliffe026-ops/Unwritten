@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Echoes of the Unwritten</title>
+<link href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=Cinzel:wght@400;600;900&family=Crimson+Pro:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --void:#04040a; --ink:#08080f; --parchment:#e8dfc8;
+  --gold:#c9a84c; --gold-bright:#f0d060; --gold-dim:#6a5022;
+  --red:#8b1a1a; --red-bright:#cc2233;
+  --border:#1e1e30; --panel:#0a0a14cc;
+}
+
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+
+html, body {
+  width:100%; height:100%;
+  background:var(--void);
+  overflow:hidden;
+  font-family:'Crimson Pro', Georgia, serif;
+  color:var(--parchment);
+  cursor:none;
+}
+
+/* ── CUSTOM CURSOR ── */
+#cursor {
+  position:fixed; width:20px; height:20px;
+  pointer-events:none; z-index:9999;
+  transform:translate(-50%,-50%);
+  transition:transform .1s;
+}
+#cursor::before {
+  content:'✒';font-size:16px;color:var(--gold);
+  text-shadow:0 0 8px var(--gold);
+}
+#cursor.hovering::before { content:'◆'; color:var(--gold-bright); }
+
+/* ── CANVAS LAYERS ── */
+#canvas-bg, #canvas-fx { position:fixed; inset:0; pointer-events:none; }
+#canvas-bg { z-index:0; }
+#canvas-fx { z-index:2; }
+
+/* ── GRAIN OVERLAY ── */
+#grain {
+  position:fixed; inset:0; z-index:3; pointer-events:none;
+  opacity:0.035;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size:256px;
+}
+
+/* ── SCANLINES ── */
+#scanlines {
+  position:fixed; inset:0; z-index:4; pointer-events:none;
+  background:repeating-linear-gradient(
+    0deg, transparent, transparent 2px,
+    rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px
+  );
+}
+
+/* ══ MAIN MENU ══ */
+#menu-screen {
+  position:fixed; inset:0; z-index:10;
+  display:flex; flex-direction:column;
+  align-items:flex-start; justify-content:center;
+  padding:0 8vw;
+}
+
+/* eyebrow */
+.menu-eyebrow {
+  font-family:'Cinzel', serif;
+  font-size:clamp(9px,1.1vw,12px);
+  letter-spacing:8px; text-transform:uppercase;
+  color:var(--gold-dim); margin-bottom:16px;
+  opacity:0;
+  animation:revealUp .8s .4s ease forwards;
+}
+
+/* title */
+.menu-title-wrap { position:relative; margin-bottom:8px; }
+.menu-title {
+  font-family:'UnifrakturMaguntia', cursive;
+  font-size:clamp(48px,7vw,96px);
+  color:var(--gold);
+  line-height:1.05;
+  text-shadow:0 0 60px #c9a84c44, 0 0 120px #c9a84c18;
+  opacity:0;
+  animation:revealUp .9s .6s ease forwards;
+  position:relative; z-index:1;
+}
+/* glitch layers */
+.menu-title::before,
+.menu-title::after {
+  content:attr(data-text);
+  position:absolute; inset:0;
+  font-family:'UnifrakturMaguntia', cursive;
+  font-size:inherit; line-height:inherit;
+}
+.menu-title::before {
+  color:#ff2244; clip-path:polygon(0 20%,100% 20%,100% 40%,0 40%);
+  animation:glitch-a 7s 2s infinite;
+}
+.menu-title::after {
+  color:#00e5ff; clip-path:polygon(0 60%,100% 60%,100% 75%,0 75%);
+  animation:glitch-b 7s 2.1s infinite;
+}
+
+.menu-subtitle {
+  font-family:'Cinzel', serif;
+  font-size:clamp(10px,1.3vw,14px);
+  letter-spacing:5px; color:var(--parchment);
+  opacity:0; margin-bottom:6px;
+  animation:revealUp .8s .8s ease forwards;
+}
+.subtitle-opacity { opacity:.4; }
+
+/* divider */
+.menu-divider {
+  width:0; height:1px; margin:28px 0 36px;
+  background:linear-gradient(90deg, var(--gold), transparent);
+  animation:expandLine 1s 1.1s ease forwards;
+}
+
+/* ── MENU BUTTONS ── */
+#menu-nav {
+  display:flex; flex-direction:column; gap:4px;
+  opacity:0; animation:revealUp .7s 1.3s ease forwards;
+}
+
+.menu-btn {
+  display:flex; align-items:center; gap:16px;
+  background:none; border:none;
+  font-family:'Cinzel', serif;
+  font-size:clamp(12px,1.6vw,18px);
+  letter-spacing:4px; text-transform:uppercase;
+  color:var(--parchment); opacity:.55;
+  padding:10px 0; cursor:none;
+  transition:all .2s ease;
+  position:relative; width:fit-content;
+}
+.menu-btn::before {
+  content:''; width:0; height:1px;
+  background:var(--gold);
+  transition:width .25s ease;
+  flex-shrink:0;
+}
+.menu-btn:hover, .menu-btn.focused {
+  opacity:1; color:var(--gold-bright);
+  transform:translateX(12px);
+}
+.menu-btn:hover::before, .menu-btn.focused::before { width:24px; }
+
+.menu-btn .btn-glyph {
+  font-size:.75em; opacity:0;
+  transition:opacity .2s, transform .2s;
+  transform:translateX(-8px);
+}
+.menu-btn:hover .btn-glyph, .menu-btn.focused .btn-glyph {
+  opacity:.6; transform:translateX(0);
+}
+
+/* NEW GAME — highlighted */
+.menu-btn.primary { opacity:.9; color:var(--gold); font-size:clamp(14px,1.9vw,22px); }
+.menu-btn.primary::before { width:16px; background:var(--gold); }
+.menu-btn.primary:hover, .menu-btn.primary.focused { opacity:1; }
+
+/* version tag */
+.menu-version {
+  position:fixed; bottom:18px; right:24px;
+  font-family:'Cinzel', serif; font-size:9px;
+  letter-spacing:3px; color:var(--gold-dim); opacity:.5;
+  z-index:10;
+}
+
+/* ── OVERLAY SCREENS ── */
+.overlay {
+  position:fixed; inset:0; z-index:20;
+  display:none; flex-direction:column;
+  align-items:center; justify-content:center;
+  background:#04040aee;
+  animation:fadeIn .4s ease forwards;
+}
+.overlay.active { display:flex; }
+
+.overlay-panel {
+  background:var(--ink);
+  border:1px solid var(--border);
+  width:min(560px,90vw);
+  padding:36px 40px;
+  position:relative;
+  animation:revealUp .4s ease forwards;
+}
+.overlay-panel::before {
+  content:''; position:absolute;
+  top:0; left:0; right:0; height:2px;
+  background:linear-gradient(90deg,transparent,var(--gold),transparent);
+}
+
+.overlay-title {
+  font-family:'Cinzel', serif;
+  font-size:clamp(13px,2vw,18px);
+  letter-spacing:5px; color:var(--gold);
+  text-transform:uppercase; margin-bottom:24px;
+  text-align:center;
+}
+.overlay-body {
+  font-size:clamp(13px,1.5vw,16px);
+  line-height:1.9; color:var(--parchment);
+  opacity:.8; text-align:center;
+}
+.overlay-close {
+  margin-top:28px; width:100%;
+  font-family:'Cinzel', serif; font-size:11px;
+  letter-spacing:4px; text-transform:uppercase;
+  color:var(--gold-dim); background:transparent;
+  border:1px solid var(--border); padding:12px;
+  cursor:none; transition:all .2s;
+}
+.overlay-close:hover { border-color:var(--gold); color:var(--gold); }
+
+/* Settings sliders */
+.setting-row {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 0; border-bottom:1px solid var(--border);
+  font-family:'Cinzel', serif; font-size:11px;
+  letter-spacing:2px; color:var(--parchment); opacity:.7;
+}
+.setting-row:last-of-type { border-bottom:none; }
+.setting-control { display:flex; align-items:center; gap:10px; }
+.toggle {
+  width:36px; height:18px; background:var(--border);
+  border:1px solid #333; position:relative; cursor:none;
+  transition:background .2s;
+}
+.toggle.on { background:var(--gold-dim); }
+.toggle::after {
+  content:''; position:absolute;
+  width:12px; height:12px; top:2px; left:2px;
+  background:#888; transition:all .2s;
+}
+.toggle.on::after { left:20px; background:var(--gold); }
+
+/* Instructions */
+.key-row {
+  display:flex; align-items:center; gap:16px;
+  padding:8px 0; border-bottom:1px solid #0e0e1a;
+  font-size:13px;
+}
+.key-tag {
+  font-family:'Cinzel', serif; font-size:9px;
+  letter-spacing:2px; background:#111120;
+  border:1px solid var(--border); padding:3px 8px;
+  color:var(--gold); min-width:80px; text-align:center;
+}
+.key-desc { opacity:.65; font-style:italic; }
+
+/* Credits */
+.credits-row {
+  text-align:center; padding:6px 0;
+  font-size:13px; line-height:1.8;
+}
+.credits-role {
+  font-family:'Cinzel', serif; font-size:9px;
+  letter-spacing:3px; color:var(--gold-dim);
+  text-transform:uppercase; margin-top:14px;
+}
+
+/* ── TRANSITION WIPE ── */
+#wipe {
+  position:fixed; inset:0; z-index:100;
+  background:var(--void);
+  transform:scaleX(0); transform-origin:left;
+  pointer-events:none;
+}
+#wipe.out { animation:wipeOut .5s ease forwards; }
+#wipe.in  { animation:wipeIn  .5s ease forwards; }
+
+/* ── GLITCH FLASH ── */
+#glitch-flash {
+  position:fixed; inset:0; z-index:99;
+  pointer-events:none; opacity:0;
+}
+
+/* ── ANIMATIONS ── */
+@keyframes revealUp {
+  from { opacity:0; transform:translateY(16px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+@keyframes expandLine {
+  from { width:0; }
+  to   { width:min(320px,40vw); }
+}
+@keyframes fadeIn { from{opacity:0}to{opacity:1} }
+@keyframes wipeOut { from{transform:scaleX(0)}to{transform:scaleX(1)} }
+@keyframes wipeIn  { from{transform:scaleX(1)}to{transform:scaleX(0);transform-origin:right} }
+
+@keyframes glitch-a {
+  0%,92%,100%  { transform:translate(0); opacity:0; }
+  93%          { transform:translate(-3px,1px); opacity:.7; }
+  94%          { transform:translate(3px,-1px); opacity:.5; }
+  95%          { transform:translate(0); opacity:0; }
+  97%          { transform:translate(-2px,2px); opacity:.6; }
+  98%          { transform:translate(0); opacity:0; }
+}
+@keyframes glitch-b {
+  0%,92%,100%  { transform:translate(0); opacity:0; }
+  93%          { transform:translate(3px,-1px); opacity:.6; }
+  94%          { transform:translate(-3px,1px); opacity:.4; }
+  95%          { transform:translate(0); opacity:0; }
+  97%          { transform:translate(2px,-2px); opacity:.5; }
+  98%          { transform:translate(0); opacity:0; }
+}
+@keyframes flicker {
+  0%,94%,100% { opacity:1; }
+  95%         { opacity:.7; }
+  96%         { opacity:1; }
+  97%         { opacity:.4; }
+  98%         { opacity:1; }
+}
+
+/* glitch flash colors */
+@keyframes flashRed   { 0%{opacity:.06}50%{opacity:.1}100%{opacity:0} }
+@keyframes flashBlue  { 0%{opacity:.04}50%{opacity:.08}100%{opacity:0} }
+</style>
+</head>
+<body>
+
+<!-- CURSOR -->
+<div id="cursor"></div>
+
+<!-- CANVAS LAYERS -->
+<canvas id="canvas-bg"></canvas>
+<canvas id="canvas-fx"></canvas>
+<div id="grain"></div>
+<div id="scanlines"></div>
+
+<!-- WIPE TRANSITION -->
+<div id="wipe"></div>
+<div id="glitch-flash"></div>
+
+<!-- ══ MAIN MENU ══ -->
+<div id="menu-screen">
+  <div class="menu-eyebrow">A Web RPG Experience · Ver. 0.1</div>
+
+  <div class="menu-title-wrap">
+    <div class="menu-title" data-text="Echoes of the" id="title-line1"
+         style="animation:revealUp .9s .6s ease forwards, flicker 8s 3s infinite">
+      Echoes of the
+    </div>
+    <div class="menu-title" data-text="Unwritten" id="title-line2"
+         style="animation:revealUp .9s .75s ease forwards, flicker 8s 3.3s infinite">
+      Unwritten
+    </div>
+  </div>
+
+  <div class="menu-subtitle subtitle-opacity">
+    When the script breaks — so does fate.
+  </div>
+
+  <div class="menu-divider"></div>
+
+  <nav id="menu-nav">
+    <button class="menu-btn primary" onclick="handleNewGame()">
+      <span class="btn-glyph">✒</span>
+      New Game
+    </button>
+    <button class="menu-btn" onclick="handleContinue()">
+      <span class="btn-glyph">▶</span>
+      Continue
+    </button>
+    <button class="menu-btn" onclick="openOverlay('settings')">
+      <span class="btn-glyph">⚙</span>
+      Settings
+    </button>
+    <button class="menu-btn" onclick="openOverlay('instructions')">
+      <span class="btn-glyph">📖</span>
+      Instructions
+    </button>
+    <button class="menu-btn" onclick="openOverlay('credits')">
+      <span class="btn-glyph">◈</span>
+      Credits
+    </button>
+  </nav>
+</div>
+
+<div class="menu-version">ECHOES v0.1 · UNWRITTEN BUILD</div>
+
+<!-- ══ SETTINGS OVERLAY ══ -->
+<div class="overlay" id="overlay-settings">
+  <div class="overlay-panel">
+    <div class="overlay-title">⚙ Settings</div>
+    <div class="setting-row">
+      <span>Music Volume</span>
+      <div class="setting-control">
+        <input type="range" min="0" max="100" value="70" style="accent-color:var(--gold);width:100px"/>
+      </div>
+    </div>
+    <div class="setting-row">
+      <span>SFX Volume</span>
+      <div class="setting-control">
+        <input type="range" min="0" max="100" value="80" style="accent-color:var(--gold);width:100px"/>
+      </div>
+    </div>
+    <div class="setting-row">
+      <span>Glitch Effects</span>
+      <div class="setting-control">
+        <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+      </div>
+    </div>
+    <div class="setting-row">
+      <span>Scanlines</span>
+      <div class="setting-control">
+        <div class="toggle on" onclick="this.classList.toggle('on');document.getElementById('scanlines').style.display=this.classList.contains('on')?'block':'none'"></div>
+      </div>
+    </div>
+    <div class="setting-row">
+      <span>Fullscreen</span>
+      <div class="setting-control">
+        <div class="toggle" onclick="this.classList.toggle('on');this.classList.contains('on')?document.documentElement.requestFullscreen():document.exitFullscreen()"></div>
+      </div>
+    </div>
+    <button class="overlay-close" onclick="closeOverlay('settings')">◀ Back</button>
+  </div>
+</div>
+
+<!-- ══ INSTRUCTIONS OVERLAY ══ -->
+<div class="overlay" id="overlay-instructions">
+  <div class="overlay-panel">
+    <div class="overlay-title">📖 Instructions</div>
+    <div style="display:flex;flex-direction:column;gap:2px;margin-bottom:8px">
+      <div class="key-row"><span class="key-tag">W / ARROW UP</span><span class="key-desc">Move up</span></div>
+      <div class="key-row"><span class="key-tag">A / ARROW LEFT</span><span class="key-desc">Move left</span></div>
+      <div class="key-row"><span class="key-tag">S / ARROW DOWN</span><span class="key-desc">Move down</span></div>
+      <div class="key-row"><span class="key-tag">D / ARROW RIGHT</span><span class="key-desc">Move right</span></div>
+      <div class="key-row"><span class="key-tag">E</span><span class="key-desc">Interact with NPCs</span></div>
+      <div class="key-row"><span class="key-tag">F</span><span class="key-desc">BURN (attack with fire)</span></div>
+      <div class="key-row"><span class="key-tag">R</span><span class="key-desc">ERASE (destroy buildings)</span></div>
+      <div class="key-row"><span class="key-tag">ESC</span><span class="key-desc">Pause menu</span></div>
+    </div>
+    <div class="overlay-body" style="font-size:12px;margin-top:12px;opacity:.5">
+      Collect <span style="color:var(--gold)">WORDs</span> to unlock new abilities.<br/>
+      Your existence is not written — write it yourself.
+    </div>
+    <button class="overlay-close" onclick="closeOverlay('instructions')">◀ Back</button>
+  </div>
+</div>
+
+<!-- ══ CREDITS OVERLAY ══ -->
+<div class="overlay" id="overlay-credits">
+  <div class="overlay-panel">
+    <div class="overlay-title">◈ Credits</div>
+    <div style="display:flex;flex-direction:column;gap:2px">
+      <div class="credits-row">
+        <div class="credits-role">Game Design &amp; Story</div>
+        <div style="color:var(--parchment)">Cherry Casires</div>
+      </div>
+      <div class="credits-row">
+        <div class="credits-role">Lead Dev/Creative Director</div>
+        <div style="color:var(--parchment)">Radcliffe Abellana</div>
+      </div>
+      <div class="credits-row">
+        <div class="credits-role">Lead Illustrator &amp; UI</div>
+        <div style="color:var(--parchment)">Jade Alivio</div>
+      </div>
+      <div class="credits-row">
+        <div class="credits-role">Animation Specialist</div>
+        <div style="color:var(--parchment)"> Ziggy Bonsubre</div>
+      </div>
+      <div class="credits-row" style="margin-top:16px;opacity:.4;font-size:12px;font-style:italic">
+        "Once, I wanted freedom.<br/>Now… I decide fate."
+      </div>
+    </div>
+    <button class="overlay-close" onclick="closeOverlay('credits')">◀ Back</button>
+  </div>
+</div>
+
+<!-- ══ CONTINUE OVERLAY ══ -->
+<div class="overlay" id="overlay-continue">
+  <div class="overlay-panel">
+    <div class="overlay-title">▶ Continue</div>
+    <div class="overlay-body">
+      <span style="color:var(--gold-dim);font-size:13px;font-style:italic">
+        No saved data found.<br/><br/>
+        Start a New Game to begin your story.
+      </span>
+    </div>
+    <button class="overlay-close" onclick="closeOverlay('continue')">◀ Back</button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+//  CUSTOM CURSOR
+// ═══════════════════════════════════════════════
+const cursor = document.getElementById('cursor');
+document.addEventListener('mousemove', e => {
+  cursor.style.left = e.clientX + 'px';
+  cursor.style.top  = e.clientY + 'px';
+});
+document.addEventListener('mouseover', e => {
+  cursor.classList.toggle('hovering',
+    e.target.matches('button,.menu-btn,.toggle,.swatch,.opt-cell'));
+});
+
+// ═══════════════════════════════════════════════
+//  BACKGROUND CANVAS — pixel village silhouette
+// ═══════════════════════════════════════════════
+const bgCv = document.getElementById('canvas-bg');
+const bgCtx = bgCv.getContext('2d');
+
+function resizeBg() {
+  bgCv.width  = window.innerWidth;
+  bgCv.height = window.innerHeight;
+  fxCv.width  = window.innerWidth;
+  fxCv.height = window.innerHeight;
+  drawBg();
+}
+
+function drawBg() {
+  const W = bgCv.width, H = bgCv.height;
+  bgCtx.clearRect(0, 0, W, H);
+
+  // Sky gradient — deep night
+  const sky = bgCtx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0,   '#04040e');
+  sky.addColorStop(0.5, '#080818');
+  sky.addColorStop(0.8, '#0a1020');
+  sky.addColorStop(1,   '#060810');
+  bgCtx.fillStyle = sky;
+  bgCtx.fillRect(0, 0, W, H);
+
+  // Moon
+  const moonX = W * 0.78, moonY = H * 0.18;
+  const moonGlow = bgCtx.createRadialGradient(moonX, moonY, 0, moonX, moonY, 120);
+  moonGlow.addColorStop(0, 'rgba(201,168,76,0.12)');
+  moonGlow.addColorStop(1, 'transparent');
+  bgCtx.fillStyle = moonGlow;
+  bgCtx.beginPath(); bgCtx.arc(moonX, moonY, 120, 0, Math.PI*2); bgCtx.fill();
+
+  bgCtx.fillStyle = '#e8d8a0';
+  bgCtx.beginPath(); bgCtx.arc(moonX, moonY, 28, 0, Math.PI*2); bgCtx.fill();
+  bgCtx.fillStyle = '#c9b870';
+  bgCtx.beginPath(); bgCtx.arc(moonX-6, moonY-4, 6, 0, Math.PI*2); bgCtx.fill();
+  bgCtx.beginPath(); bgCtx.arc(moonX+8, moonY+6, 4, 0, Math.PI*2); bgCtx.fill();
+
+  // Stars
+  const starSeed = 42;
+  for (let i = 0; i < 140; i++) {
+    const sx = ((starSeed * (i+1) * 2654435761) >>> 0) % W;
+    const sy = ((starSeed * (i+3) * 2246822519) >>> 0) % (H * 0.65);
+    const ss = 0.5 + (i % 3) * 0.5;
+    const so = 0.3 + (i % 5) * 0.1;
+    bgCtx.fillStyle = `rgba(220,210,180,${so})`;
+    bgCtx.beginPath(); bgCtx.arc(sx, sy, ss, 0, Math.PI*2); bgCtx.fill();
+  }
+
+  // Distant mountains
+  bgCtx.fillStyle = '#080818';
+  bgCtx.beginPath();
+  bgCtx.moveTo(0, H);
+  const mpts = [[0,.6],[.08,.42],[.15,.55],[.22,.38],[.3,.5],[.38,.32],[.46,.48],[.55,.35],[.63,.5],[.72,.3],[.8,.46],[.88,.33],[.95,.5],[1,.55],[1,1]];
+  mpts.forEach(([x,y]) => bgCtx.lineTo(x*W, y*H));
+  bgCtx.closePath(); bgCtx.fill();
+
+  // Mid hills
+  bgCtx.fillStyle = '#06060f';
+  bgCtx.beginPath();
+  bgCtx.moveTo(0, H);
+  const hpts = [[0,.7],[.1,.6],[.2,.65],[.3,.57],[.45,.63],[.6,.56],[.75,.62],[.9,.58],[1,.65],[1,1]];
+  hpts.forEach(([x,y]) => bgCtx.lineTo(x*W, y*H));
+  bgCtx.closePath(); bgCtx.fill();
+
+  // Ground
+  bgCtx.fillStyle = '#050510';
+  bgCtx.fillRect(0, H*0.72, W, H*0.28);
+
+  // Pixel village silhouette
+  drawVillageSilhouette(W, H);
+
+  // Fog layer
+  const fog = bgCtx.createLinearGradient(0, H*0.65, 0, H*0.82);
+  fog.addColorStop(0, 'transparent');
+  fog.addColorStop(0.4, 'rgba(10,15,30,0.35)');
+  fog.addColorStop(1, 'rgba(4,4,14,0.7)');
+  bgCtx.fillStyle = fog;
+  bgCtx.fillRect(0, H*0.65, W, H*0.35);
+
+  // Vignette
+  const vig = bgCtx.createRadialGradient(W/2, H/2, H*0.2, W/2, H/2, H);
+  vig.addColorStop(0, 'transparent');
+  vig.addColorStop(1, 'rgba(4,4,10,0.82)');
+  bgCtx.fillStyle = vig;
+  bgCtx.fillRect(0, 0, W, H);
+}
+
+function drawVillageSilhouette(W, H) {
+  const ground = H * 0.72;
+  const scale  = W / 1200;
+  bgCtx.fillStyle = '#030308';
+
+  // Helper: pixel rect scaled
+  const r = (x,y,w,h) => bgCtx.fillRect(x*scale, ground - h*scale, w*scale, h*scale);
+
+  // House 1 (left)
+  r(80, 0, 60, 80);
+  bgCtx.fillStyle = '#c9a84c18';
+  r(95, 0, 12, 18); // lit window
+  bgCtx.fillStyle = '#030308';
+  // roof
+  bgCtx.beginPath();
+  bgCtx.moveTo(75*scale, ground-80*scale);
+  bgCtx.lineTo(110*scale, ground-115*scale);
+  bgCtx.lineTo(145*scale, ground-80*scale);
+  bgCtx.closePath(); bgCtx.fill();
+
+  // House 2
+  r(200, 0, 50, 65);
+  bgCtx.beginPath();
+  bgCtx.moveTo(196*scale, ground-65*scale);
+  bgCtx.lineTo(225*scale, ground-95*scale);
+  bgCtx.lineTo(254*scale, ground-65*scale);
+  bgCtx.closePath(); bgCtx.fill();
+  bgCtx.fillStyle = '#c9a84c22';
+  r(213, 0, 10, 16);
+  bgCtx.fillStyle = '#030308';
+
+  // Tall tower (center-left)
+  r(370, 0, 40, 150);
+  r(362, 0, 56, 20); // battlements
+  r(385, 0, 10, 160); // spire base
+  bgCtx.beginPath();
+  bgCtx.moveTo(385*scale, ground-160*scale);
+  bgCtx.lineTo(390*scale, ground-195*scale);
+  bgCtx.lineTo(395*scale, ground-160*scale);
+  bgCtx.closePath(); bgCtx.fill();
+
+  // Church / large building center
+  r(520, 0, 90, 100);
+  bgCtx.beginPath();
+  bgCtx.moveTo(515*scale, ground-100*scale);
+  bgCtx.lineTo(565*scale, ground-140*scale);
+  bgCtx.lineTo(615*scale, ground-100*scale);
+  bgCtx.closePath(); bgCtx.fill();
+  // bell tower
+  r(555, 0, 20, 145);
+  bgCtx.beginPath();
+  bgCtx.moveTo(551*scale, ground-145*scale);
+  bgCtx.lineTo(565*scale, ground-168*scale);
+  bgCtx.lineTo(579*scale, ground-145*scale);
+  bgCtx.closePath(); bgCtx.fill();
+  bgCtx.fillStyle = '#c9a84c30';
+  r(555, 0, 10, 25); // lit window top
+  r(530, 0, 14, 20);
+  r(572, 0, 14, 20);
+  bgCtx.fillStyle = '#030308';
+
+  // Houses right side
+  r(700, 0, 55, 72);
+  bgCtx.beginPath();
+  bgCtx.moveTo(696*scale, ground-72*scale);
+  bgCtx.lineTo(727*scale, ground-104*scale);
+  bgCtx.lineTo(759*scale, ground-72*scale);
+  bgCtx.closePath(); bgCtx.fill();
+
+  r(810, 0, 45, 60);
+  bgCtx.beginPath();
+  bgCtx.moveTo(806*scale, ground-60*scale);
+  bgCtx.lineTo(832*scale, ground-88*scale);
+  bgCtx.lineTo(859*scale, ground-60*scale);
+  bgCtx.closePath(); bgCtx.fill();
+
+  // Small houses far right
+  r(940, 0, 38, 52);
+  bgCtx.beginPath();
+  bgCtx.moveTo(937*scale, ground-52*scale);
+  bgCtx.lineTo(959*scale, ground-74*scale);
+  bgCtx.lineTo(981*scale, ground-52*scale);
+  bgCtx.closePath(); bgCtx.fill();
+
+  r(1040, 0, 44, 58);
+  bgCtx.beginPath();
+  bgCtx.moveTo(1036*scale, ground-58*scale);
+  bgCtx.lineTo(1062*scale, ground-82*scale);
+  bgCtx.lineTo(1088*scale, ground-58*scale);
+  bgCtx.closePath(); bgCtx.fill();
+
+  // Trees scattered
+  bgCtx.fillStyle = '#04040a';
+  [[160,55],[320,70],[650,60],[880,65],[1120,75]].forEach(([x,h])=>{
+    bgCtx.beginPath();
+    bgCtx.moveTo(x*scale, ground-h*scale);
+    bgCtx.lineTo((x+15)*scale, ground);
+    bgCtx.lineTo((x-15)*scale, ground);
+    bgCtx.closePath(); bgCtx.fill();
+    bgCtx.beginPath();
+    bgCtx.moveTo(x*scale, ground-(h+20)*scale);
+    bgCtx.lineTo((x+12)*scale, ground-h*scale);
+    bgCtx.lineTo((x-12)*scale, ground-h*scale);
+    bgCtx.closePath(); bgCtx.fill();
+    bgCtx.beginPath();
+    bgCtx.moveTo(x*scale, ground-(h+36)*scale);
+    bgCtx.lineTo((x+8)*scale, ground-(h+20)*scale);
+    bgCtx.lineTo((x-8)*scale, ground-(h+20)*scale);
+    bgCtx.closePath(); bgCtx.fill();
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  FX CANVAS — floating particles + glitch flashes
+// ═══════════════════════════════════════════════
+const fxCv  = document.getElementById('canvas-fx');
+const fxCtx = fxCv.getContext('2d');
+
+// Fireflies / dust particles
+let particles = [];
+function initParticles() {
+  particles = [];
+  for (let i = 0; i < 55; i++) {
+    particles.push({
+      x: Math.random() * window.innerWidth,
+      y: Math.random() * window.innerHeight,
+      r: 0.5 + Math.random() * 1.5,
+      vx: (Math.random() - .5) * .3,
+      vy: -(.1 + Math.random() * .25),
+      o: .1 + Math.random() * .4,
+      maxO: .15 + Math.random() * .45,
+      pulse: Math.random() * Math.PI * 2,
+      col: Math.random() > .7 ? '#c9a84c' : '#8888cc'
+    });
+  }
+}
+initParticles();
+
+// Random glitch lines state
+let glitchLines = [];
+let nextGlitch  = 3000;
+let glitchTimer = 0;
+
+function scheduleGlitch() {
+  nextGlitch = 4000 + Math.random() * 8000;
+  glitchTimer = 0;
+}
+scheduleGlitch();
+
+let lastTime = 0;
+function fxLoop(ts) {
+  const dt = ts - lastTime; lastTime = ts;
+  const W  = fxCv.width, H = fxCv.height;
+  fxCtx.clearRect(0, 0, W, H);
+
+  // particles
+  particles.forEach(p => {
+    p.pulse += .03;
+    const alpha = p.o * (.6 + Math.sin(p.pulse) * .4);
+    fxCtx.beginPath();
+    fxCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    fxCtx.fillStyle = p.col.replace(')', `,${alpha})`).replace('rgb','rgba').replace('#', 'rgba(').replace(/rgba\(([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2}),/, (_,r,g,b)=>`rgba(${parseInt(r,16)},${parseInt(g,16)},${parseInt(b,16)},`);
+    fxCtx.fillStyle = p.col;
+    fxCtx.globalAlpha = alpha;
+    fxCtx.fill();
+    fxCtx.globalAlpha = 1;
+    p.x += p.vx; p.y += p.vy;
+    if (p.y < -10) { p.y = H + 10; p.x = Math.random() * W; }
+    if (p.x < -10) p.x = W + 10;
+    if (p.x > W+10) p.x = -10;
+  });
+
+  // glitch horizontal lines
+  glitchTimer += dt;
+  if (glitchTimer > nextGlitch) {
+    // spawn glitch burst
+    const count = 3 + Math.floor(Math.random() * 5);
+    for (let i = 0; i < count; i++) {
+      glitchLines.push({
+        y: Math.random() * H,
+        w: 40 + Math.random() * (W * .6),
+        x: Math.random() * W * .4,
+        h: 1 + Math.floor(Math.random() * 3),
+        life: 60 + Math.random() * 120,
+        maxLife: 0,
+        col: Math.random() > .5 ? '#ff2244' : '#00e5ff'
+      });
+    }
+    glitchLines.forEach(l => l.maxLife = l.life);
+    scheduleGlitch();
+  }
+  glitchLines = glitchLines.filter(l => l.life > 0);
+  glitchLines.forEach(l => {
+    const a = (l.life / l.maxLife) * .25;
+    fxCtx.globalAlpha = a;
+    fxCtx.fillStyle = l.col;
+    fxCtx.fillRect(l.x, l.y, l.w, l.h);
+    fxCtx.globalAlpha = 1;
+    l.life -= dt * .15;
+  });
+
+  requestAnimationFrame(fxLoop);
+}
+requestAnimationFrame(fxLoop);
+
+window.addEventListener('resize', resizeBg);
+resizeBg();
+
+// ═══════════════════════════════════════════════
+//  OVERLAY LOGIC
+// ═══════════════════════════════════════════════
+function openOverlay(id) {
+  document.getElementById('overlay-' + id).classList.add('active');
+}
+function closeOverlay(id) {
+  document.getElementById('overlay-' + id).classList.remove('active');
+}
+// Close on backdrop click
+document.querySelectorAll('.overlay').forEach(o => {
+  o.addEventListener('click', e => {
+    if (e.target === o) o.classList.remove('active');
+  });
+});
+
+// ═══════════════════════════════════════════════
+//  GAME STATE MANAGEMENT
+// ═══════════════════════════════════════════════
+const GameState = {
+  // Initialize new game
+  newGame: function() {
+    const state = {
+      currentFile: 'prologue',
+      chapter: 'prologue',
+      storyPhase: 0,
+      playerWords: ['MOVE'],
+      playerHp: 100,
+      startTime: Date.now(),
+      lastSaveTime: Date.now(),
+      gameStarted: true,
+      completedPrologue: false,
+      currentChapter1Phase: 0,
+      chapter1Completed: false,
+      currentEnding: null
+    };
+    localStorage.setItem('gamestate', JSON.stringify(state));
+    return state;
+  },
+
+  // Load existing game
+  load: function() {
+    const saved = localStorage.getItem('gamestate');
+    return saved ? JSON.parse(saved) : null;
+  },
+
+  // Save current game
+  save: function(updates) {
+    const current = this.load() || {};
+    const newState = {...current, ...updates, lastSaveTime: Date.now()};
+    localStorage.setItem('gamestate', JSON.stringify(newState));
+    return newState;
+  },
+
+  // Check if save exists
+  hasSave: function() {
+    return localStorage.getItem('gamestate') !== null;
+  },
+
+  // Get save info for display
+  getSaveInfo: function() {
+    const state = this.load();
+    if (!state) return null;
+    const elapsed = Date.now() - state.startTime;
+    const hours = Math.floor(elapsed / 3600000);
+    const mins = Math.floor((elapsed % 3600000) / 60000);
+    const location = state.currentFile === 'prologue' 
+      ? 'Prologue' 
+      : `Chapter 1 (Phase ${state.currentChapter1Phase})`;
+    return {
+      location,
+      playtime: hours > 0 ? `${hours}h ${mins}m` : `${mins}m`,
+      lastSaved: new Date(state.lastSaveTime).toLocaleDateString()
+    };
+  }
+};
+
+// ═══════════════════════════════════════════════
+//  NAVIGATION
+// ═══════════════════════════════════════════════
+function handleNewGame() {
+  GameState.newGame();
+  triggerWipe(() => {
+    window.location.href = 'chapter1.html'; // Direct to chapter1 (includes prologue intro)
+  });
+}
+
+function handleContinue() {
+  const state = GameState.load();
+  if (!state) {
+    openOverlay('continue');
+    return;
+  }
+  triggerWipe(() => {
+    // Always go to chapter1.html (single game file)
+    window.location.href = 'chapter1.html';
+  });
+}
+
+function triggerWipe(callback) {
+  const wipe = document.getElementById('wipe');
+  // Flash glitch before wipe
+  triggerGlitchFlash();
+  setTimeout(() => {
+    wipe.style.transformOrigin = 'left';
+    wipe.classList.add('out');
+    setTimeout(() => {
+      wipe.classList.remove('out');
+      wipe.style.transform = 'scaleX(1)';
+      callback();
+    }, 500);
+  }, 120);
+}
+
+function triggerGlitchFlash() {
+  const flash = document.getElementById('glitch-flash');
+  flash.style.background = '#ff2244';
+  flash.style.animation = 'flashRed .25s ease forwards';
+  setTimeout(() => {
+    flash.style.background = '#00e5ff';
+    flash.style.animation = 'flashBlue .2s ease forwards';
+    setTimeout(() => { flash.style.animation = ''; flash.style.opacity = '0'; }, 200);
+  }, 250);
+}
+
+// Keyboard nav
+const btns = document.querySelectorAll('.menu-btn');
+let focusIdx = 0;
+document.addEventListener('keydown', e => {
+  if (document.querySelector('.overlay.active')) {
+    if (e.key === 'Escape') document.querySelectorAll('.overlay.active').forEach(o=>o.classList.remove('active'));
+    return;
+  }
+  if (e.key === 'ArrowDown') {
+    btns[focusIdx].classList.remove('focused');
+    focusIdx = (focusIdx + 1) % btns.length;
+    btns[focusIdx].classList.add('focused');
+  }
+  if (e.key === 'ArrowUp') {
+    btns[focusIdx].classList.remove('focused');
+    focusIdx = (focusIdx - 1 + btns.length) % btns.length;
+    btns[focusIdx].classList.add('focused');
+  }
+  if (e.key === 'Enter') btns[focusIdx].click();
+  if (e.key === 'Escape') document.querySelectorAll('.overlay.active').forEach(o=>o.classList.remove('active'));
+});
+</script>
+</body>
+</html>
